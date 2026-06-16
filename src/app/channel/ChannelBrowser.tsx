@@ -63,7 +63,7 @@ function buildProducts(rows: ChannelRow[]): Product[] {
         title: r.product?.name || r.raw_name || sku || "(unnamed)",
         sku,
         brand: r.brand?.display_name || "—",
-        image: r.product?.image_url || null,
+        image: r.image || null,
         capacity: r.product?.capacity ?? null,
         wired: r.product?.wired_power ?? null,
         wireless: r.product?.wireless_power ?? null,
@@ -74,7 +74,7 @@ function buildProducts(rows: ChannelRow[]): Product[] {
       };
       map.set(key, p);
     }
-    if (!p.image && r.product?.image_url) p.image = r.product.image_url;
+    if (!p.image && r.image) p.image = r.image;
     const byDate = new Map<string, { eur: number | null; promo: boolean }>();
     for (const s of r.snapshots) {
       if (!s.scraped_date) continue;

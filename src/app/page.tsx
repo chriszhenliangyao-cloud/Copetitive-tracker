@@ -141,7 +141,7 @@ export default async function Home() {
               {recent.map(({ r, s }) => (
                 <tr key={r.id}>
                   <td>
-                    <Thumb src={r.product?.image_url} alt={r.product?.name} />
+                    <Thumb src={r.image} alt={r.product?.name} />
                   </td>
                   <td>
                     {r.product?.name ?? r.raw_name ?? "—"}
