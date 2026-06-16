@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Thumb from "@/components/Thumb";
-import { fmtEUR, fmtMoney, titleCase } from "@/lib/format";
+import Sparkline from "@/components/Sparkline";
+import { COUNTRY_NAMES, fmtEUR, fmtMoney, titleCase } from "@/lib/format";
+
+export type PriceRow = {
+  retailer: string;
+  country: string | null;
+  code: string | null;
+  byDate: Record<string, number | null>;
+};
 
 export type IniuProduct = {
   id: number;
@@ -33,8 +41,8 @@ export type Competitor = {
   image_url: string | null;
   rrp: number | null;
   rrp_currency: string | null;
-  priceEUR: number | null;
-  retailers: number;
+  priceRows: PriceRow[];
+  dates: string[];
 };
 
 export default function IniuTable({
@@ -174,15 +182,37 @@ function Compare({
   competitors: Competitor[];
   onBack: () => void;
 }) {
-  const ranked = [...competitors].sort((a, b) => {
-    if (a.priceEUR == null && b.priceEUR == null) return a.brand.localeCompare(b.brand);
-    if (a.priceEUR == null) return 1;
-    if (b.priceEUR == null) return -1;
-    return a.priceEUR - b.priceEUR;
-  });
-  const prices = competitors.map((c) => c.priceEUR).filter((v): v is number => v != null);
-  const lo = prices.length ? Math.min(...prices) : null;
-  const hi = prices.length ? Math.max(...prices) : null;
+  const [tab, setTab] = useState<"general" | "price">("general");
+  const [brand, setBrand] = useState("");
+  const [retailer, setRetailer] = useState("");
+  const [country, setCountry] = useState("");
+
+  const opts = useMemo(() => {
+    const brands = new Set<string>();
+    const retailers = new Set<string>();
+    const countries = new Set<string>();
+    for (const c of competitors) {
+      brands.add(c.brand);
+      for (const r of c.priceRows) {
+        retailers.add(r.retailer);
+        if (r.country) countries.add(r.country);
+      }
+    }
+    return {
+      brands: [...brands].sort(),
+      retailers: [...retailers].sort(),
+      countries: [...countries].sort(),
+    };
+  }, [competitors]);
+
+  const shown = useMemo(() => {
+    return competitors.filter((c) => {
+      if (brand && c.brand !== brand) return false;
+      if (retailer && !c.priceRows.some((r) => r.retailer === retailer)) return false;
+      if (country && !c.priceRows.some((r) => r.country === country)) return false;
+      return true;
+    });
+  }, [competitors, brand, retailer, country]);
 
   return (
     <>
@@ -196,66 +226,176 @@ function Compare({
             {product.sku}
             {product.capacity ? ` · ${product.capacity}` : ""}
             {product.wired_power ? ` · ${product.wired_power}` : ""}
-            {product.wireless_power ? ` · ${product.wireless_power} wireless` : ""}
             {product.magsafe ? " · MagSafe" : ""}
           </p>
         </div>
         <Thumb src={product.image_url} alt={product.name} large />
       </header>
 
-      <section className="metrics">
-        <Metric label="Competitors" value={competitors.length} />
-        <Metric label="Priced in channel" value={prices.length} />
-        <MetricText label="Cheapest" value={lo != null ? fmtEUR(lo) : "—"} />
-        <MetricText label="Most expensive" value={hi != null ? fmtEUR(hi) : "—"} />
-      </section>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className={`btn${tab === "general" ? " btn-primary" : ""}`} onClick={() => setTab("general")}>
+            General Info
+          </button>
+          <button className={`btn${tab === "price" ? " btn-primary" : ""}`} onClick={() => setTab("price")}>
+            Price
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Sel label="Brand" value={brand} set={setBrand} opts={opts.brands} render={titleCase} />
+          <Sel label="Retailer" value={retailer} set={setRetailer} opts={opts.retailers} />
+          <Sel label="Country" value={country} set={setCountry} opts={opts.countries} render={(c) => COUNTRY_NAMES[c] ?? c} />
+        </div>
+      </div>
 
       <section className="table-panel">
         <div className="table-head">
-          <h2>Mapped competitors</h2>
-          <span className="count">{competitors.length} SKUs</span>
+          <h2>{tab === "general" ? "Competitive specs" : "Competitive pricing"}</h2>
+          <span className="count">
+            {shown.length} of {competitors.length}
+          </span>
         </div>
         <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th></th>
-                <th>Brand</th>
-                <th>Product</th>
-                <th>Capacity</th>
-                <th>Wired</th>
-                <th>Wireless</th>
-                <th>MagSafe</th>
-                <th>RRP</th>
-                <th>Channel (EUR)</th>
-                <th>Retailers</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranked.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Thumb src={c.image_url} alt={c.name} />
-                  </td>
-                  <td>{titleCase(c.brand)}</td>
-                  <td>
-                    {c.name}
-                    <div className="sub">{c.sku}</div>
-                  </td>
-                  <td>{c.capacity ?? "—"}</td>
-                  <td>{c.wired_power ?? "—"}</td>
-                  <td>{c.wireless_power ?? "—"}</td>
-                  <td>{c.magsafe ? <span className="badge badge-magsafe">Yes</span> : "—"}</td>
-                  <td>{c.rrp != null ? fmtMoney(c.rrp, c.rrp_currency) : "—"}</td>
-                  <td>{c.priceEUR != null ? fmtEUR(c.priceEUR) : "—"}</td>
-                  <td>{c.retailers > 0 ? c.retailers : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {tab === "general" ? <GeneralTable competitors={shown} /> : <PriceTable competitors={shown} retailer={retailer} country={country} />}
         </div>
       </section>
     </>
+  );
+}
+
+function GeneralTable({ competitors }: { competitors: Competitor[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Brand</th>
+          <th>Product</th>
+          <th>Capacity</th>
+          <th>Wired</th>
+          <th>Wireless</th>
+          <th>Size</th>
+          <th>Weight</th>
+          <th>Ports</th>
+          <th>MagSafe</th>
+          <th>RRP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {competitors.map((c) => (
+          <tr key={c.id}>
+            <td>
+              <Thumb src={c.image_url} alt={c.name} />
+            </td>
+            <td>{titleCase(c.brand)}</td>
+            <td>
+              {c.name}
+              <div className="sub">{c.sku}</div>
+            </td>
+            <td>{c.capacity ?? "—"}</td>
+            <td>{c.wired_power ?? "—"}</td>
+            <td>{c.wireless_power ?? "—"}</td>
+            <td>{c.size ?? "—"}</td>
+            <td>{c.weight ?? "—"}</td>
+            <td>{c.usb_ports ?? "—"}</td>
+            <td>{c.magsafe ? <span className="badge badge-magsafe">Yes</span> : "—"}</td>
+            <td>{c.rrp != null ? fmtMoney(c.rrp, c.rrp_currency) : "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function PriceTable({
+  competitors,
+  retailer,
+  country,
+}: {
+  competitors: Competitor[];
+  retailer: string;
+  country: string;
+}) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Brand</th>
+          <th>Product</th>
+          <th>RRP</th>
+          <th>Retailer</th>
+          <th>Price history (EUR)</th>
+          <th>Trend</th>
+        </tr>
+      </thead>
+      <tbody>
+        {competitors.map((c) => {
+          const dates = c.dates.slice(-4);
+          const rows = c.priceRows.filter(
+            (r) => (!retailer || r.retailer === retailer) && (!country || r.country === country),
+          );
+          if (rows.length === 0) {
+            return (
+              <tr key={c.id}>
+                <td>
+                  <Thumb src={c.image_url} alt={c.name} />
+                </td>
+                <td>{titleCase(c.brand)}</td>
+                <td>
+                  {c.name}
+                  <div className="sub">{c.sku}</div>
+                </td>
+                <td>{c.rrp != null ? fmtMoney(c.rrp, c.rrp_currency) : "—"}</td>
+                <td className="muted" colSpan={3}>
+                  no channel listing
+                </td>
+              </tr>
+            );
+          }
+          return rows.map((r, i) => (
+            <tr key={`${c.id}-${r.retailer}-${i}`}>
+              {i === 0 ? (
+                <>
+                  <td rowSpan={rows.length}>
+                    <Thumb src={c.image_url} alt={c.name} />
+                  </td>
+                  <td rowSpan={rows.length}>{titleCase(c.brand)}</td>
+                  <td rowSpan={rows.length}>
+                    {c.name}
+                    <div className="sub">{c.sku}</div>
+                  </td>
+                  <td rowSpan={rows.length}>{c.rrp != null ? fmtMoney(c.rrp, c.rrp_currency) : "—"}</td>
+                </>
+              ) : null}
+              <td>
+                {r.retailer}
+                {r.country ? <span className="muted"> ({r.country})</span> : null}
+              </td>
+              <td>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {dates.map((d, di) => {
+                    const v = r.byDate[d] ?? null;
+                    const prev = di > 0 ? r.byDate[dates[di - 1]] ?? null : null;
+                    let cls = "";
+                    if (v != null && prev != null && v !== prev) cls = v > prev ? "chg-up" : "chg-down";
+                    return (
+                      <div key={d} style={{ textAlign: "right", minWidth: 52 }}>
+                        <div style={{ fontSize: 10, color: "#9aa6ae" }}>{d.slice(5)}</div>
+                        <div className={cls}>{v != null ? fmtEUR(v) : "—"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </td>
+              <td>
+                <Sparkline values={dates.map((d) => r.byDate[d] ?? null)} />
+              </td>
+            </tr>
+          ));
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -267,11 +407,31 @@ function Metric({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
-function MetricText({ label, value }: { label: string; value: string }) {
+
+function Sel({
+  label,
+  value,
+  set,
+  opts,
+  render,
+}: {
+  label: string;
+  value: string;
+  set: (v: string) => void;
+  opts: string[];
+  render?: (v: string) => string;
+}) {
   return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="filter-group">
+      <label>{label}</label>
+      <select value={value} onChange={(e) => set(e.target.value)}>
+        <option value="">All</option>
+        {opts.map((o) => (
+          <option key={o} value={o}>
+            {render ? render(o) : o}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

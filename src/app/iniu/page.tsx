@@ -1,7 +1,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { getChannelRows } from "@/lib/data";
 import { effectivePrice, toEUR } from "@/lib/format";
-import IniuTable, { type IniuProduct, type Competitor } from "./IniuTable";
+import IniuTable, { type IniuProduct, type Competitor, type PriceRow } from "./IniuTable";
 
 export const dynamic = "force-dynamic";
 
@@ -42,23 +42,27 @@ export default async function IniuPage() {
     getChannelRows(),
   ]);
 
-  // lowest current EUR price + retailer set per competitor SKU
-  const priceMap = new Map<string, number | null>();
-  const retailerSets = new Map<string, Set<string>>();
+  // channel index: competitor SKU (upper) -> retailer price rows + union of dates
+  const chRows = new Map<string, PriceRow[]>();
+  const chDates = new Map<string, Set<string>>();
   for (const r of channel) {
     const sku = r.product?.sku;
     if (!sku) continue;
     const k = sku.toUpperCase();
-    const latest = [...r.snapshots]
-      .filter((s) => s.scraped_date)
-      .sort((a, b) => (a.scraped_date! < b.scraped_date! ? 1 : -1))[0];
-    if (!retailerSets.has(k)) retailerSets.set(k, new Set());
-    if (r.retailer?.display_name) retailerSets.get(k)!.add(r.retailer.display_name);
-    if (!latest) continue;
-    const eur = toEUR(effectivePrice(latest.price, latest.promo_price), latest.currency);
-    if (eur == null) continue;
-    const cur = priceMap.get(k);
-    if (cur == null || eur < cur) priceMap.set(k, eur);
+    const byDate: Record<string, number | null> = {};
+    for (const s of r.snapshots) {
+      if (!s.scraped_date) continue;
+      byDate[s.scraped_date] = toEUR(effectivePrice(s.price, s.promo_price), s.currency);
+    }
+    if (!chRows.has(k)) chRows.set(k, []);
+    chRows.get(k)!.push({
+      retailer: r.retailer?.display_name ?? "—",
+      country: r.retailer?.country ?? null,
+      code: r.retailer_product_code,
+      byDate,
+    });
+    if (!chDates.has(k)) chDates.set(k, new Set());
+    Object.keys(byDate).forEach((d) => chDates.get(k)!.add(d));
   }
 
   const compByIniu: Record<number, Competitor[]> = {};
@@ -81,8 +85,8 @@ export default async function IniuPage() {
       image_url: c.image_url,
       rrp: c.rrp != null ? Number(c.rrp) : null,
       rrp_currency: c.rrp_currency,
-      priceEUR: priceMap.get(k) ?? null,
-      retailers: retailerSets.get(k)?.size ?? 0,
+      priceRows: chRows.get(k) ?? [],
+      dates: [...(chDates.get(k) ?? [])].sort(),
     });
   }
 
