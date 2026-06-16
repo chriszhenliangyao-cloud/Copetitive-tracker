@@ -1,0 +1,201 @@
+.shell {
+  width: min(1180px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 40px 0 56px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 0 28px;
+}
+
+.header h1 {
+  margin: 0;
+  color: #172026;
+  font-size: 34px;
+  font-weight: 680;
+  line-height: 1.15;
+}
+
+.header p {
+  margin: 8px 0 0;
+  max-width: 620px;
+  color: #63707a;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.status {
+  flex: 0 0 auto;
+  border: 1px solid #cfe6dc;
+  border-radius: 999px;
+  background: #edf8f3;
+  color: #237454;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 9px 12px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.metric,
+.panel,
+.tablePanel {
+  border: 1px solid #d9e0e4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+.metric {
+  padding: 18px;
+}
+
+.metric span {
+  display: block;
+  color: #63707a;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  color: #172026;
+  font-size: 30px;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.metric.warn strong {
+  color: #a45f12;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.panel h2,
+.tableHeader h2 {
+  margin: 0;
+  color: #172026;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.panelText {
+  margin: 12px 0 0;
+  color: #63707a;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.statusList {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  border: 1px solid #edf0f2;
+  border-radius: 6px;
+  background: #f8fafb;
+  padding: 0 12px;
+  color: #40505b;
+  font-size: 14px;
+}
+
+.statusRow strong {
+  color: #172026;
+}
+
+.tablePanel {
+  overflow: hidden;
+}
+
+.tableHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e5eaed;
+  padding: 16px 18px;
+}
+
+.tableHeader span {
+  color: #63707a;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid #edf0f2;
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tableWrap th {
+  color: #63707a;
+  background: #f8fafb;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.tableWrap td {
+  color: #26343d;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tableWrap tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: min(100vw - 24px, 1180px);
+    padding-top: 24px;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+
+  .metrics,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
