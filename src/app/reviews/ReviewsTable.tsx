@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Thumb from "@/components/Thumb";
 import { COUNTRY_NAMES, titleCase } from "@/lib/format";
+import { resolveReview } from "./actions";
+
+export type SkuOption = { sku: string; name: string; brandKey: string };
 
 export type ReviewRow = {
   id: number;
+  listing_id: number | null;
   status: string;
   suggested_sku: string | null;
   correct_sku: string | null;
@@ -19,7 +23,7 @@ export type ReviewRow = {
     raw_name: string | null;
     url: string | null;
     retailer: { display_name: string; country: string | null } | null;
-    brand: { display_name: string } | null;
+    brand: { display_name: string; key: string } | null;
   } | null;
 };
 
@@ -32,19 +36,23 @@ const typeBadge: Record<string, string> = {
   library_missing: "badge-missing",
 };
 
-export default function ReviewsTable({ rows }: { rows: ReviewRow[] }) {
+export default function ReviewsTable({ rows, skuOptions }: { rows: ReviewRow[]; skuOptions: SkuOption[] }) {
   const [type, setType] = useState("");
   const [brand, setBrand] = useState("");
   const [q, setQ] = useState("");
+  const [resolved, setResolved] = useState<Set<number>>(new Set());
+  const [active, setActive] = useState<ReviewRow | null>(null);
 
   const brands = useMemo(
     () => [...new Set(rows.map((r) => r.listing?.brand?.display_name ?? "—"))].sort(),
     [rows],
   );
 
+  const visible = useMemo(() => rows.filter((r) => !resolved.has(r.id)), [rows, resolved]);
+
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return rows.filter((r) => {
+    return visible.filter((r) => {
       if (type && r.listing?.status !== type) return false;
       if (brand && (r.listing?.brand?.display_name ?? "—") !== brand) return false;
       if (qq) {
@@ -55,29 +63,32 @@ export default function ReviewsTable({ rows }: { rows: ReviewRow[] }) {
       }
       return true;
     });
-  }, [rows, type, brand, q]);
+  }, [visible, type, brand, q]);
 
-  const newCount = rows.filter((r) => r.listing?.status === "new_listing").length;
-  const missCount = rows.filter((r) => r.listing?.status === "library_missing").length;
+  const pending = visible.length;
+  const newCount = visible.filter((r) => r.listing?.status === "new_listing").length;
+  const missCount = visible.filter((r) => r.listing?.status === "library_missing").length;
 
   return (
     <>
       <header className="page-head">
         <div>
           <h1>Reviews</h1>
-          <p>Listings awaiting manual SKU resolution.</p>
+          <p>Listings awaiting manual SKU resolution. Resolve here — applied to the data on the next local sync.</p>
         </div>
-        <div className="pill">{rows.length} pending</div>
+        <div className="pill">{pending} pending</div>
       </header>
 
       <section className="metrics">
-        <Metric label="Pending" value={rows.length} />
+        <Metric label="Pending" value={pending} />
         <Metric label="New listings" value={newCount} />
         <Metric label="Library missing" value={missCount} />
+        <Metric label="Resolved (this session)" value={resolved.size} />
       </section>
 
       <div className="note">
-        Read-only view. Approving / mapping reviews writes back to the data and needs login — that&apos;s the next phase.
+        Resolving sets the decision in the cloud (status = done). It becomes the real mapping when you run{" "}
+        <code>pull_reviews.py</code> → <code>apply_mapping_review.py</code> → <code>push_to_supabase.py</code> locally.
       </div>
 
       <div className="filter-bar">
@@ -110,7 +121,7 @@ export default function ReviewsTable({ rows }: { rows: ReviewRow[] }) {
         <div className="table-head">
           <h2>Pending items</h2>
           <span className="count">
-            {filtered.length} of {rows.length}
+            {filtered.length} of {pending}
           </span>
         </div>
         <div className="table-wrap">
@@ -123,7 +134,7 @@ export default function ReviewsTable({ rows }: { rows: ReviewRow[] }) {
                 <th>Retailer</th>
                 <th>Code</th>
                 <th>Type</th>
-                <th>Suggested SKU</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -155,14 +166,125 @@ export default function ReviewsTable({ rows }: { rows: ReviewRow[] }) {
                       {typeLabel[r.listing?.status ?? ""] ?? r.listing?.status ?? "—"}
                     </span>
                   </td>
-                  <td className="muted">{r.suggested_sku ?? "—"}</td>
+                  <td>
+                    <button className="btn btn-primary" onClick={() => setActive(r)}>
+                      Resolve
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {active ? (
+        <ResolveModal
+          review={active}
+          skuOptions={skuOptions}
+          onClose={() => setActive(null)}
+          onResolved={(id) => {
+            setResolved((s) => new Set(s).add(id));
+            setActive(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function ResolveModal({
+  review,
+  skuOptions,
+  onClose,
+  onResolved,
+}: {
+  review: ReviewRow;
+  skuOptions: SkuOption[];
+  onClose: () => void;
+  onResolved: (id: number) => void;
+}) {
+  const brandKey = review.listing?.brand?.key ?? "";
+  const [sku, setSku] = useState(review.correct_sku || review.suggested_sku || "");
+  const [name, setName] = useState(review.product_name || review.listing?.raw_name || "");
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const options = useMemo(
+    () => skuOptions.filter((o) => !brandKey || o.brandKey === brandKey).slice(0, 500),
+    [skuOptions, brandKey],
+  );
+  const match = options.find((o) => o.sku.toUpperCase() === sku.trim().toUpperCase());
+
+  const submit = () => {
+    setErr(null);
+    start(async () => {
+      const res = await resolveReview(review.id, review.listing_id, sku, name);
+      if (res.ok) onResolved(review.id);
+      else setErr(res.error ?? "Failed");
+    });
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 22, width: "min(560px, 100%)", boxShadow: "0 8px 30px rgba(17,24,39,0.18)" }}
+      >
+        <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Resolve listing</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+          {titleCase(review.listing?.brand?.display_name)} · {review.listing?.retailer?.display_name} ·{" "}
+          {review.listing?.retailer_product_code ?? "no code"}
+        </p>
+        <div style={{ fontSize: 14, marginBottom: 16 }}>{review.product_name || review.listing?.raw_name}</div>
+
+        <div className="filter-group" style={{ marginBottom: 14 }}>
+          <label>Correct SKU</label>
+          <input
+            type="text"
+            list="sku-options"
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            placeholder="Existing SKU or new SKU…"
+            style={{ width: "100%" }}
+            autoFocus
+          />
+          <datalist id="sku-options">
+            {options.map((o) => (
+              <option key={o.sku} value={o.sku}>
+                {o.name}
+              </option>
+            ))}
+          </datalist>
+          <div className="sub">
+            {sku.trim()
+              ? match
+                ? `✓ existing library product: ${match.name}`
+                : "new SKU — a library row will be created on apply"
+              : `${options.length} known ${titleCase(review.listing?.brand?.display_name)} SKUs`}
+          </div>
+        </div>
+
+        <div className="filter-group" style={{ marginBottom: 18 }}>
+          <label>Product name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%" }} />
+        </div>
+
+        {err ? <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{err}</div> : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button className="btn" onClick={onClose} disabled={pending}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={submit} disabled={pending || !sku.trim()}>
+            {pending ? "Saving…" : "Mark resolved"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
