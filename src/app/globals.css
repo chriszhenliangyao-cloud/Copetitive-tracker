@@ -451,6 +451,7 @@ input:focus {
   box-shadow: var(--shadow);
   padding: 14px;
   cursor: pointer;
+  overflow: hidden;
 }
 .pcard:hover {
   border-color: #c2ccd2;
@@ -477,24 +478,33 @@ input:focus {
   margin-top: 12px;
   width: 100%;
   font-size: 12px;
+  table-layout: fixed;
 }
 .price-table th,
 .price-table td {
   border: 0;
-  padding: 4px 6px;
+  padding: 4px 5px;
   position: static;
   background: transparent;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .price-table th {
   color: #9aa6ae;
   font-size: 10.5px;
   text-align: right;
 }
+.price-table th:first-child,
+.price-table td:first-child {
+  width: 40%;
+  text-align: left;
+}
 .price-table th:first-child { text-align: left; }
 .price-table td { text-align: right; color: #40505b; }
-.price-table td:first-child { text-align: left; color: var(--foreground); }
-.price-table .out { color: var(--danger); font-weight: 600; margin-left: 6px; }
+.price-table td:first-child { color: var(--foreground); }
+.price-table td:first-child .muted { font-size: 11px; }
+.price-table .out { color: var(--danger); font-weight: 600; margin-left: 4px; }
 
 .empty {
   padding: 40px 18px;
