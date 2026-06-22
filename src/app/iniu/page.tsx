@@ -27,7 +27,7 @@ type LinkRow = {
 
 export default async function IniuPage() {
   const sb = getSupabase();
-  const [iniuRes, linkRes, channel] = await Promise.all([
+  const [iniuRes, linkRes, channel, priceRes] = await Promise.all([
     sb
       .from("iniu_products")
       .select("id, sku, name, capacity, size, weight, wired_power, wireless_power, usb_ports, magsafe, image_url")
@@ -40,7 +40,24 @@ export default async function IniuPage() {
       )
       .limit(20000),
     getChannelRows(),
+    sb.from("iniu_price_snapshots").select("iniu_product_id, scraped_date, price, currency").order("scraped_date"),
   ]);
+
+  // INIU's own price history per product
+  const priceByIniu: Record<number, { date: string; price: number | null; currency: string | null }[]> = {};
+  for (const s of (priceRes.data ?? []) as {
+    iniu_product_id: number;
+    scraped_date: string | null;
+    price: number | string | null;
+    currency: string | null;
+  }[]) {
+    if (!s.scraped_date) continue;
+    (priceByIniu[s.iniu_product_id] ||= []).push({
+      date: s.scraped_date,
+      price: s.price != null ? Number(s.price) : null,
+      currency: s.currency,
+    });
+  }
 
   // channel index: competitor SKU (upper) -> retailer price rows + union of dates
   const chRows = new Map<string, PriceRow[]>();
@@ -90,5 +107,5 @@ export default async function IniuPage() {
     });
   }
 
-  return <IniuTable products={(iniuRes.data ?? []) as IniuProduct[]} compByIniu={compByIniu} />;
+  return <IniuTable products={(iniuRes.data ?? []) as IniuProduct[]} compByIniu={compByIniu} priceByIniu={priceByIniu} />;
 }

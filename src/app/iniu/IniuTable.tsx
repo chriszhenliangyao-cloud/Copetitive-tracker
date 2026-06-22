@@ -45,12 +45,39 @@ export type Competitor = {
   dates: string[];
 };
 
+type IniuPricePoint = { date: string; price: number | null; currency: string | null };
+
+function PriceHistory({ series }: { series: IniuPricePoint[] }) {
+  if (!series || series.length === 0) return <span className="muted">—</span>;
+  const last = series.slice(-4);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", gap: 10 }}>
+        {last.map((pt, i) => {
+          const prev = i > 0 ? last[i - 1].price : null;
+          let cls = "";
+          if (pt.price != null && prev != null && pt.price !== prev) cls = pt.price > prev ? "chg-up" : "chg-down";
+          return (
+            <div key={pt.date} style={{ textAlign: "right", minWidth: 50 }}>
+              <div style={{ fontSize: 10, color: "#9aa6ae" }}>{pt.date.slice(5)}</div>
+              <div className={cls}>{pt.price != null ? fmtMoney(pt.price, pt.currency) : "—"}</div>
+            </div>
+          );
+        })}
+      </div>
+      <Sparkline values={last.map((p) => p.price)} />
+    </div>
+  );
+}
+
 export default function IniuTable({
   products,
   compByIniu,
+  priceByIniu,
 }: {
   products: IniuProduct[];
   compByIniu: Record<number, Competitor[]>;
+  priceByIniu: Record<number, IniuPricePoint[]>;
 }) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
@@ -138,6 +165,7 @@ export default function IniuTable({
                 <th>Wired</th>
                 <th>Wireless</th>
                 <th>Ports</th>
+                <th>Price history</th>
                 <th>MagSafe</th>
                 <th>Competitors</th>
               </tr>
@@ -158,6 +186,9 @@ export default function IniuTable({
                     <td>{p.wired_power ?? "—"}</td>
                     <td>{p.wireless_power ?? "—"}</td>
                     <td>{p.usb_ports ?? "—"}</td>
+                    <td>
+                      <PriceHistory series={priceByIniu[p.id] ?? []} />
+                    </td>
                     <td>{p.magsafe ? <span className="badge badge-magsafe">MagSafe</span> : "—"}</td>
                     <td>
                       {n > 0 ? <span className="badge badge-mapped">{n}</span> : <span className="muted">—</span>}
