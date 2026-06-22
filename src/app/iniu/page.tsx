@@ -40,23 +40,39 @@ export default async function IniuPage() {
       )
       .limit(20000),
     getChannelRows(),
-    sb.from("iniu_price_snapshots").select("iniu_product_id, scraped_date, price, currency").order("scraped_date"),
+    sb
+      .from("iniu_price_snapshots")
+      .select("iniu_product_id, scraped_date, price, promo_price, currency, country, retailer_product_code, retailer:retailers(display_name)")
+      .order("scraped_date"),
   ]);
 
-  // INIU's own price history per product
-  const priceByIniu: Record<number, { date: string; price: number | null; currency: string | null }[]> = {};
-  for (const s of (priceRes.data ?? []) as {
+  // INIU's own per-retailer price history (EUR), one row per (product, retailer)
+  const ownByIniu: Record<number, PriceRow[]> = {};
+  const ownIndex = new Map<string, PriceRow>();
+  for (const s of (priceRes.data ?? []) as unknown as {
     iniu_product_id: number;
     scraped_date: string | null;
     price: number | string | null;
+    promo_price: number | string | null;
     currency: string | null;
+    country: string | null;
+    retailer_product_code: string | null;
+    retailer: { display_name: string } | null;
   }[]) {
     if (!s.scraped_date) continue;
-    (priceByIniu[s.iniu_product_id] ||= []).push({
-      date: s.scraped_date,
-      price: s.price != null ? Number(s.price) : null,
-      currency: s.currency,
-    });
+    const ret = s.retailer?.display_name ?? "—";
+    const key = `${s.iniu_product_id}|${ret}`;
+    let row = ownIndex.get(key);
+    if (!row) {
+      row = { retailer: ret, country: s.country, code: s.retailer_product_code, byDate: {} };
+      ownIndex.set(key, row);
+      (ownByIniu[s.iniu_product_id] ||= []).push(row);
+    }
+    const eff = effectivePrice(
+      s.price != null ? Number(s.price) : null,
+      s.promo_price != null ? Number(s.promo_price) : null,
+    );
+    row.byDate[s.scraped_date] = toEUR(eff, s.currency);
   }
 
   // channel index: competitor SKU (upper) -> retailer price rows + union of dates
@@ -107,5 +123,5 @@ export default async function IniuPage() {
     });
   }
 
-  return <IniuTable products={(iniuRes.data ?? []) as IniuProduct[]} compByIniu={compByIniu} priceByIniu={priceByIniu} />;
+  return <IniuTable products={(iniuRes.data ?? []) as IniuProduct[]} compByIniu={compByIniu} ownByIniu={ownByIniu} />;
 }

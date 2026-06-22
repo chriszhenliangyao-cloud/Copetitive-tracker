@@ -45,39 +45,14 @@ export type Competitor = {
   dates: string[];
 };
 
-type IniuPricePoint = { date: string; price: number | null; currency: string | null };
-
-function PriceHistory({ series }: { series: IniuPricePoint[] }) {
-  if (!series || series.length === 0) return <span className="muted">—</span>;
-  const last = series.slice(-4);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ display: "flex", gap: 10 }}>
-        {last.map((pt, i) => {
-          const prev = i > 0 ? last[i - 1].price : null;
-          let cls = "";
-          if (pt.price != null && prev != null && pt.price !== prev) cls = pt.price > prev ? "chg-up" : "chg-down";
-          return (
-            <div key={pt.date} style={{ textAlign: "right", minWidth: 50 }}>
-              <div style={{ fontSize: 10, color: "#9aa6ae" }}>{pt.date.slice(5)}</div>
-              <div className={cls}>{pt.price != null ? fmtMoney(pt.price, pt.currency) : "—"}</div>
-            </div>
-          );
-        })}
-      </div>
-      <Sparkline values={last.map((p) => p.price)} />
-    </div>
-  );
-}
-
 export default function IniuTable({
   products,
   compByIniu,
-  priceByIniu,
+  ownByIniu,
 }: {
   products: IniuProduct[];
   compByIniu: Record<number, Competitor[]>;
-  priceByIniu: Record<number, IniuPricePoint[]>;
+  ownByIniu: Record<number, PriceRow[]>;
 }) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
@@ -106,6 +81,7 @@ export default function IniuTable({
       <Compare
         product={selectedProduct}
         competitors={compByIniu[selectedProduct.id] ?? []}
+        ownRows={ownByIniu[selectedProduct.id] ?? []}
         onBack={() => setSelected(null)}
       />
     );
@@ -165,7 +141,6 @@ export default function IniuTable({
                 <th>Wired</th>
                 <th>Wireless</th>
                 <th>Ports</th>
-                <th>Price history</th>
                 <th>MagSafe</th>
                 <th>Competitors</th>
               </tr>
@@ -186,9 +161,6 @@ export default function IniuTable({
                     <td>{p.wired_power ?? "—"}</td>
                     <td>{p.wireless_power ?? "—"}</td>
                     <td>{p.usb_ports ?? "—"}</td>
-                    <td>
-                      <PriceHistory series={priceByIniu[p.id] ?? []} />
-                    </td>
                     <td>{p.magsafe ? <span className="badge badge-magsafe">MagSafe</span> : "—"}</td>
                     <td>
                       {n > 0 ? <span className="badge badge-mapped">{n}</span> : <span className="muted">—</span>}
@@ -207,10 +179,12 @@ export default function IniuTable({
 function Compare({
   product,
   competitors,
+  ownRows,
   onBack,
 }: {
   product: IniuProduct;
   competitors: Competitor[];
+  ownRows: PriceRow[];
   onBack: () => void;
 }) {
   const [tab, setTab] = useState<"general" | "price">("general");
@@ -278,6 +252,18 @@ function Compare({
           <Sel label="Country" value={country} set={setCountry} opts={opts.countries} render={(c) => COUNTRY_NAMES[c] ?? c} />
         </div>
       </div>
+
+      {tab === "price" && ownRows.length > 0 ? (
+        <section className="table-panel" style={{ borderColor: "var(--accent-border)" }}>
+          <div className="table-head" style={{ background: "var(--accent-bg)" }}>
+            <h2 style={{ color: "var(--accent)" }}>INIU own channel price</h2>
+            <span className="count">{ownRows.length} retailers</span>
+          </div>
+          <div className="table-wrap">
+            <OwnPriceTable product={product} rows={ownRows} retailer={retailer} country={country} />
+          </div>
+        </section>
+      ) : null}
 
       <section className="table-panel">
         <div className="table-head">
@@ -425,6 +411,75 @@ function PriceTable({
             </tr>
           ));
         })}
+      </tbody>
+    </table>
+  );
+}
+
+function OwnPriceTable({
+  product,
+  rows,
+  retailer,
+  country,
+}: {
+  product: IniuProduct;
+  rows: PriceRow[];
+  retailer: string;
+  country: string;
+}) {
+  const dates = [...new Set(rows.flatMap((r) => Object.keys(r.byDate)))].sort().slice(-4);
+  const filtered = rows.filter((r) => (!retailer || r.retailer === retailer) && (!country || r.country === country));
+  if (filtered.length === 0) return <div className="empty">No INIU price for this filter.</div>;
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Product</th>
+          <th>Retailer</th>
+          <th>Price history (EUR)</th>
+          <th>Trend</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filtered.map((r, i) => (
+          <tr key={`${r.retailer}-${i}`}>
+            {i === 0 ? (
+              <>
+                <td rowSpan={filtered.length}>
+                  <Thumb src={product.image_url} alt={product.name} />
+                </td>
+                <td rowSpan={filtered.length}>
+                  {product.name}
+                  <div className="sub">{product.sku}</div>
+                </td>
+              </>
+            ) : null}
+            <td>
+              {r.retailer}
+              {r.country ? <span className="muted"> ({r.country})</span> : null}
+            </td>
+            <td>
+              <div style={{ display: "flex", gap: 10 }}>
+                {dates.map((d, di) => {
+                  const v = r.byDate[d] ?? null;
+                  const prev = di > 0 ? r.byDate[dates[di - 1]] ?? null : null;
+                  let cls = "";
+                  if (v != null && prev != null && v !== prev) cls = v > prev ? "chg-up" : "chg-down";
+                  return (
+                    <div key={d} style={{ textAlign: "right", minWidth: 52 }}>
+                      <div style={{ fontSize: 10, color: "#9aa6ae" }}>{d.slice(5)}</div>
+                      <div className={cls}>{v != null ? fmtEUR(v) : "—"}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </td>
+            <td>
+              <Sparkline values={dates.map((d) => r.byDate[d] ?? null)} />
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );
