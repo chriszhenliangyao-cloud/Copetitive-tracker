@@ -141,6 +141,7 @@ export default function IniuTable({
                 <th>Wired</th>
                 <th>Wireless</th>
                 <th>Ports</th>
+                <th>Channels</th>
                 <th>MagSafe</th>
                 <th>Competitors</th>
               </tr>
@@ -161,6 +162,15 @@ export default function IniuTable({
                     <td>{p.wired_power ?? "—"}</td>
                     <td>{p.wireless_power ?? "—"}</td>
                     <td>{p.usb_ports ?? "—"}</td>
+                    <td>
+                      {(ownByIniu[p.id]?.length ?? 0) > 0 ? (
+                        <span className="badge badge-mapped" title="Retailers with an INIU price">
+                          {ownByIniu[p.id].length}
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
                     <td>{p.magsafe ? <span className="badge badge-magsafe">MagSafe</span> : "—"}</td>
                     <td>
                       {n > 0 ? <span className="badge badge-mapped">{n}</span> : <span className="muted">—</span>}
